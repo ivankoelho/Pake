@@ -72,7 +72,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -199,7 +199,7 @@ jobs:
 
       - name: Upload DMG (macOS)
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.name }}-macOS
           path: ${{ inputs.name }}.dmg
@@ -207,7 +207,7 @@ jobs:
 
       - name: Upload DEB (Linux)
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.name }}-Linux-deb
           path: ${{ inputs.name }}.deb
@@ -216,7 +216,7 @@ jobs:
 
       - name: Upload AppImage (Linux)
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.name }}-Linux-AppImage
           path: ${{ inputs.name }}.AppImage
@@ -225,7 +225,7 @@ jobs:
 
       - name: Upload RPM (Linux)
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.name }}-Linux-rpm
           path: ${{ inputs.name }}.rpm
@@ -234,7 +234,7 @@ jobs:
 
       - name: Upload ZST (Linux)
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.name }}-Linux-zst
           path: ${{ inputs.name }}-*.pkg.tar.zst
@@ -243,7 +243,7 @@ jobs:
 
       - name: Upload MSI (Windows)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.name }}-Windows
           path: ${{ inputs.name }}.msi
