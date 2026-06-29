@@ -122,7 +122,7 @@ jobs:
             rust: stable
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -136,7 +136,7 @@ jobs:
 
       - name: Download CLI Artifact
         if: github.event_name != 'workflow_dispatch'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           name: pake-cli-dist
           path: dist
@@ -393,7 +393,7 @@ jobs:
           git checkout -- src-tauri/Cargo.lock
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.title }}-${{ matrix.build }}
           path: output/*/*.*
