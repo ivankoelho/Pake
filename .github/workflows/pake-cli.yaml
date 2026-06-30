@@ -255,7 +255,7 @@ jobs:
       # FIX 2 - TECLADO: Apos instalacao do .deb, o arquivo .desktop e
       # Patch do .desktop para corrigir digitacao nos campos de login.
       # Problema: WebKitGTK conflita com IBus/fcitx causando letras perdidas.
-      # Solucao: GTK_IM_MODULE=xim forca XIM (metodo de entrada basico).
+      # Solucao: GTK_IM_MODULE=xim forca XIM em vez de IBus/fcitx.
       - name: Patch .desktop for keyboard fix (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -269,7 +269,7 @@ jobs:
 
           echo "==> Patching .desktop inside $DEB_FILE..."
           WORK_DIR=$(mktemp -d)
-          ORIG_DIR="$(pwd)"
+          ORIG_DIR=$(pwd)
           cp "$DEB_FILE" "$WORK_DIR/"
           cd "$WORK_DIR"
 
@@ -288,17 +288,10 @@ jobs:
           echo "--- BEFORE ---"
           cat "$DESKTOP_FILE"
 
-          # Escreve o script Python via printf (sem heredoc, totalmente indentado)
-          PATCH_PY=$(mktemp /tmp/patch_XXXXXX.py)
-          printf '%s\n' 'import sys, re' > "$PATCH_PY"
-          printf '%s\n' 'path = sys.argv[1]' >> "$PATCH_PY"
-          printf '%s\n' 'txt = open(path).read()' >> "$PATCH_PY"
-          printf '%s\n' 'txt = re.sub(r\"(?m)^Exec=(?:env\\s+\\S+=\\S+\\s+)*\", \"Exec=\", txt)' >> \"$PATCH_PY\"
-          printf '%s\n' 'txt = re.sub(r\"(?m)^Exec=(.+)$\", \"Exec=env GTK_IM_MODULE=xim XMODIFIERS=@im=none \" + r\"\g<1>\", txt)' >> \"$PATCH_PY\"
-          printf '%s\n' 'open(path, "w").write(txt)' >> "$PATCH_PY"
-          printf '%s\n' 'print("Patch OK")' >> "$PATCH_PY"
-          python3 "$PATCH_PY" "$DESKTOP_FILE"
-          rm -f "$PATCH_PY"
+          # Remove patches anteriores (se ja aplicados) e aplica o correto
+          # sed com separador | para nao conflitar com / nos paths
+          sed -i 's|^Exec=env .*pake-|Exec=pake-|' "$DESKTOP_FILE"
+          sed -i 's|^Exec=|Exec=env GTK_IM_MODULE=xim XMODIFIERS=@im=none |' "$DESKTOP_FILE"
 
           echo "--- AFTER ---"
           cat "$DESKTOP_FILE"
@@ -309,7 +302,7 @@ jobs:
           ar rcs "${{ env.BUILD_APP_NAME }}_patched.deb" debian-binary control.tar* data.tar.gz
           cp "${{ env.BUILD_APP_NAME }}_patched.deb" "$ORIG_DIR/${{ env.BUILD_APP_NAME }}.deb"
           cd "$ORIG_DIR" && rm -rf "$WORK_DIR"
-          echo "==> DEB patched successfully!"
+          echo "==> DEB patched successfully!" 
 
       - name: Upload AppImage (Linux)
         if: runner.os == 'Linux'
