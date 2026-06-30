@@ -297,8 +297,7 @@ jobs:
           tar -czf data.tar.gz -C data_extracted .
           
           # Substitui no .deb (reempacota com ar)
-          cp "$WORK_DIR/debian-binary" .
-          cp "$WORK_DIR/control.tar"* .
+          # Nota: debian-binary e control.tar* já estão no CWD ($WORK_DIR) após "ar x"
           ar rcs "${{ env.BUILD_APP_NAME }}_patched.deb" debian-binary control.tar* data.tar.gz
 
           # Substitui o deb original pelo corrigido
