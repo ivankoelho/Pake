@@ -254,8 +254,9 @@ jobs:
 
       # FIX 2 - TECLADO: Apos instalacao do .deb, o arquivo .desktop e
       # Patch do .desktop para corrigir digitacao nos campos de login.
-      # Problema: WebKitGTK conflita com IBus/fcitx causando letras perdidas.
-      # Solucao: GTK_IM_MODULE=xim forca XIM em vez de IBus/fcitx.
+      # Problema: WebKitGTK no Linux Mint (X11) intercepta teclas como aceleradores
+      # de menu GTK (ex: E=Edit, V=View) antes de chegar no campo de texto da webview.
+      # Solucao: conjunto de variaveis que desativam o compositing e forcam X11 puro.
       - name: Patch .desktop for keyboard fix (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -288,10 +289,17 @@ jobs:
           echo "--- BEFORE ---"
           cat "$DESKTOP_FILE"
 
-          # Remove patches anteriores (se ja aplicados) e aplica o correto
-          # sed com separador | para nao conflitar com / nos paths
-          sed -i 's|^Exec=env .*pake-|Exec=pake-|' "$DESKTOP_FILE"
-          sed -i 's|^Exec=|Exec=env GTK_IM_MODULE=xim XMODIFIERS=@im=none |' "$DESKTOP_FILE"
+          # Remove qualquer patch anterior para nao duplicar
+          sed -i 's|^Exec=env .*|Exec=PLACEHOLDER|' "$DESKTOP_FILE"
+          sed -i 's|^Exec=PLACEHOLDER|Exec=pake-${{ env.BUILD_APP_NAME }}|' "$DESKTOP_FILE"
+
+          # Aplica o patch correto:
+          # - WEBKIT_DISABLE_COMPOSITING_MODE=1 : resolve teclas interceptadas pelo GTK no X11
+          # - GDK_BACKEND=x11                   : forca backend X11 puro (Linux Mint usa Xorg)
+          # - WEBKIT_FORCE_SANDBOX=0             : desativa sandbox que bloqueia eventos de input
+          # - GTK_IM_MODULE=xim                  : usa XIM em vez de IBus/fcitx
+          # - XMODIFIERS=@im=none                : desativa IME externo
+          sed -i 's|^Exec=|Exec=env WEBKIT_DISABLE_COMPOSITING_MODE=1 GDK_BACKEND=x11 WEBKIT_FORCE_SANDBOX=0 GTK_IM_MODULE=xim XMODIFIERS=@im=none |' "$DESKTOP_FILE"
 
           echo "--- AFTER ---"
           cat "$DESKTOP_FILE"
@@ -302,7 +310,7 @@ jobs:
           ar rcs "${{ env.BUILD_APP_NAME }}_patched.deb" debian-binary control.tar* data.tar.gz
           cp "${{ env.BUILD_APP_NAME }}_patched.deb" "$ORIG_DIR/${{ env.BUILD_APP_NAME }}.deb"
           cd "$ORIG_DIR" && rm -rf "$WORK_DIR"
-          echo "==> DEB patched successfully!" 
+          echo "==> DEB patched successfully!"
 
       - name: Upload AppImage (Linux)
         if: runner.os == 'Linux'
