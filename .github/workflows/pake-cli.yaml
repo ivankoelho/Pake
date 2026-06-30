@@ -108,7 +108,13 @@ jobs:
         timeout-minutes: 25
         shell: bash
         run: |
-          ARGS=("${{ inputs.url }}" "--name" "${{ inputs.name }}")
+          APP_NAME="${{ inputs.name }}"
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -s ' ' '-')
+            echo "Normalized Linux app name: $APP_NAME"
+          fi
+          echo "BUILD_APP_NAME=$APP_NAME" >> "$GITHUB_ENV"
+          ARGS=("${{ inputs.url }}" "--name" "$APP_NAME")
 
           if [ -n "${{ inputs.icon }}" ]; then
             ARGS+=("--icon" "${{ inputs.icon }}")
@@ -159,6 +165,7 @@ jobs:
         shell: pwsh
         run: |
           $args = "${{ inputs.url }}", "--name", "${{ inputs.name }}"
+          echo "BUILD_APP_NAME=${{ inputs.name }}" >> $env:GITHUB_ENV
 
           if ("${{ inputs.icon }}" -ne "") {
             $args += "--icon", "${{ inputs.icon }}"
@@ -197,56 +204,67 @@ jobs:
 
           git checkout -- src-tauri/Cargo.lock
 
+      - name: List generated files
+        if: always()
+        shell: bash
+        run: |
+          echo "=== Files in workspace root matching app name ==="
+          ls -la "${{ env.BUILD_APP_NAME }}"* 2>/dev/null || echo "No files found matching ${{ env.BUILD_APP_NAME }}*"
+          echo "=== Full workspace root listing ==="
+          ls -la
+          echo "=== Searching recursively for built bundles ==="
+          find . -maxdepth 6 \( -iname "*.deb" -o -iname "*.rpm" -o -iname "*.AppImage" -o -iname "*.dmg" -o -iname "*.msi" -o -iname "*.exe" -o -iname "*.zst" \) 2>/dev/null
+
       - name: Upload DMG (macOS)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.name }}-macOS
-          path: ${{ inputs.name }}.dmg
+          name: ${{ env.BUILD_APP_NAME }}-macOS
+          path: ${{ env.BUILD_APP_NAME }}.dmg
           retention-days: 3
 
       - name: Upload DEB (Linux)
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.name }}-Linux-deb
-          path: ${{ inputs.name }}.deb
+          name: ${{ env.BUILD_APP_NAME }}-Linux-deb
+          path: ${{ env.BUILD_APP_NAME }}.deb
           retention-days: 3
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
       - name: Upload AppImage (Linux)
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.name }}-Linux-AppImage
-          path: ${{ inputs.name }}.AppImage
+          name: ${{ env.BUILD_APP_NAME }}-Linux-AppImage
+          path: ${{ env.BUILD_APP_NAME }}.AppImage
           retention-days: 3
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
       - name: Upload RPM (Linux)
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.name }}-Linux-rpm
-          path: ${{ inputs.name }}.rpm
+          name: ${{ env.BUILD_APP_NAME }}-Linux-rpm
+          path: ${{ env.BUILD_APP_NAME }}.rpm
           retention-days: 3
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
       - name: Upload ZST (Linux)
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.name }}-Linux-zst
-          path: ${{ inputs.name }}-*.pkg.tar.zst
+          name: ${{ env.BUILD_APP_NAME }}-Linux-zst
+          path: ${{ env.BUILD_APP_NAME }}-*.pkg.tar.zst
           retention-days: 3
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
       - name: Upload MSI (Windows)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.name }}-Windows
-          path: ${{ inputs.name }}.msi
+          name: ${{ env.BUILD_APP_NAME }}-Windows
+          path: ${{ env.BUILD_APP_NAME }}.msi
           retention-days: 3
 
       - name: Rust cache store
@@ -260,3 +278,4 @@ jobs:
             ~/.cargo/git/db/
             src-tauri/target/
           key: ${{ runner.os }}-cargo-pake-${{ hashFiles('**/Cargo.lock') }}
+
