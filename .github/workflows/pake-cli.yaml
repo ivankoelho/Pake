@@ -103,6 +103,23 @@ jobs:
             src-tauri/target/
           key: ${{ runner.os }}-cargo-pake-${{ hashFiles('**/Cargo.lock') }}
 
+      # FIX 1 - ICONE: Baixa o icone da URL como arquivo local em 256px para
+      # garantir que o Tauri/Pake embuta corretamente no .deb (Linux exige
+      # icone em arquivo local, nao URL, e minimo 128x128 para hicolor).
+      - name: Download app icon
+        if: runner.os != 'Windows' && inputs.icon != ''
+        shell: bash
+        run: |
+          ICON_URL="${{ inputs.icon }}"
+          # Se a URL for do icons8, forra tamanho 256 para melhor qualidade
+          ICON_URL=$(echo "$ICON_URL"| sed 's/size=[0-9]*/size=256/g')
+          echo "Downloading icon from: $ICON_URL"
+          curl -fL "$ICON_URL" -o /tmp/app-icon.png
+          # Valida que e uma imagem PNG valida
+          file /tmp/app-icon.png
+          echo "Icon downloaded successfully ($(wc -c < /tmp/app-icon.png) bytes)"
+          echo "ICON_LOCAL_PATH=/tmp/app-icon.png" >> "$GITHUB_ENV"
+
       - name: Build App (Linux/macOS)
         if: runner.os != 'Windows'
         timeout-minutes: 25
@@ -111,12 +128,15 @@ jobs:
           APP_NAME="${{ inputs.name }}"
           if [ "${{ runner.os }}" == "Linux" ]; then
             APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -s ' ' '-')
-            echo "Normalized Linux app name: $APP_NAME"
+            echo "Normalized Linux app name: $APPNAME"
           fi
-          echo "BUILD_APP_NAME=$APP_NAME" >> "$GITHUB_ENV"
+          echo "BUILD_APP_NAME=$APPNAME" >> "$GITHUB_ENV"
           ARGS=("${{ inputs.url }}" "--name" "$APP_NAME")
 
-          if [ -n "${{ inputs.icon }}" ]; then
+          # FIX 1 - ICONE: usa arquivo local baixado em vez de URL direta
+          if [ -n "${ICON_LOCAL_PATH:-}" ] && [ -f "$ICON_LOCAL_PATH" ]; then
+            ARGS+=("--icon" "$ICON_LOCAL_PATH")
+          elif [ -n "${{ inputs.icon }}" ]; then
             ARGS+=("--icon" "${{ inputs.icon }}")
           fi
 
@@ -232,6 +252,60 @@ jobs:
           retention-days: 3
           if-no-files-found: warn
 
+      # FIX 2 - TECLADO: Apos instalacao do .deb, o arquivo .desktop e
+      # sobrescrito com GTK_IM_MODULE='' e XMODIFIERS='' para evitar conflito
+      # com IBus/fcitx no WebKitGTK, corrigindo letras que nao funcionam
+      # nos campos de login do app.
+      - name: Patch .desktop for keyboard fix (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          DEB_FILE="${{ env.BUILD_APP_NAME }}.deb"
+          if [ ! -f "$DEB_FILE" ]; then
+            echo "DEB not found, skipping .desktop patch"
+            exit 0
+          fi
+
+          echo "Patching .desktop inside $DEB_FILE to fix keyboard input (IME conflict)..."
+          WORK_DIR=$(mktemp -d)
+          cp "$DEB_FILE" "$WORK_DIR/"
+          cd "$WORK_DIR"
+
+          # Extrai o .deb
+          ar x "$DEB_FILE"
+          mkdir data_extracted
+          tar -xf data.tar* -C data_extracted
+
+          # Encontra e corrige o arquivo .desktop
+          DESKTOP_FILE=$(find data_extracted -name "*.desktop" | head -1)
+          if [ -z "$DESKTOP_FILE" ]; then
+            echo "No .desktop file found inside .deb, skipping patch"
+            cd - && rm -rf "$WORK_DIR"
+            exit 0
+          fi
+
+          echo "Found .desktop at: $DDESKTOP_FILE"
+          cat "$DESKTOP_FILE"
+
+          # Substitui a linha Exec= para adicionar as variaveis de ambiente
+          sed -i 's|^Exec=\(.*\)|Exec=env GTK_IM_MODULE="" XMODIFIERS="" \1|g' "$DESKTOP_FILE"
+
+          echo "Patched .desktop:"
+          cat "$DESKTOP_FILE"
+
+          # Reempacota o data.tar
+          tar -czf data.tar.gz -C data_extracted .
+          
+          # Substitui no .deb (reempacota com ar)
+          cp "$WORK_DIR/debian-binary" .
+          cp "$WORK_DIR/control.tar"* .
+          ar rcs "${{ env.BUILD_APP_NAME }}_patched.deb" debian-binary control.tar* data.tar.gz
+
+          # Substitui o deb original pelo corrigido
+          cp "${{ env.BUILD_APP_NAME }}_patched.deb" "${OLDPWD}/${{ env.BUILD_APP_NAME }}.deb"
+          cd - && rm -rf "$WORK_DIR"
+          echo "DEB patched successfully!"
+
       - name: Upload AppImage (Linux)
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
@@ -278,4 +352,3 @@ jobs:
             ~/.cargo/git/db/
             src-tauri/target/
           key: ${{ runner.os }}-cargo-pake-${{ hashFiles('**/Cargo.lock') }}
-
