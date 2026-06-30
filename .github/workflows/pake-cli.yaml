@@ -274,7 +274,7 @@ jobs:
           cp "$DEB_FILE" "$WORK_DIR/"
           cd "$WORK_DIR"
 
-          # Extrai o .deb (já estamos no WORK_DIR)
+          # Extrai o .deb (ja estamos no WORK_DIR)
           ar x "${{ env.BUILD_APP_NAME }}.deb"
           mkdir -p data_extracted
           tar -xf data.tar* -C data_extracted
@@ -291,18 +291,23 @@ jobs:
           echo "--- BEFORE ---"
           cat "$DESKTOP_FILE"
 
-          # Corrige Exec= usando python3 via heredoc (seguro contra quoting do bash)
-          python3 - "$DESKTOP_FILE" <<'PYEOF'
+          # Salva o script Python em arquivo temporario (evita problemas de
+          # quoting/indentacao do bash com heredoc ou python3 -c)
+          PATCH_PY="$(mktemp /tmp/patch_desktop_XXXXXX.py)"
+          cat > "$PATCH_PY" << 'EOF'
 import sys, re
 path = sys.argv[1]
 txt = open(path).read()
 # Remove patches anteriores para nao duplicar
 txt = re.sub(r'(?m)^Exec=(?:env\s+\S+=\S+\s+)*', 'Exec=', txt)
-# Injeta GTK_IM_MODULE=xim XMODIFIERS=@im=none
-txt = re.sub(r'(?m)^Exec=(.+)$', r'Exec=env GTK_IM_MODULE=xim XMODIFIERS=@im=none ', txt)
+# GTK_IM_MODULE=xim: usa XIM em vez de IBus/fcitx (corrige letras perdidas no WebKitGTK)
+# XMODIFIERS=@im=none: desativa IME externo que conflita com a webview do Tauri
+txt = re.sub(r'(?m)^Exec=(.+)$', r'Exec=env GTK_IM_MODULE=xim XMODIFIERS=@im=none \g<1>', txt)
 open(path, 'w').write(txt)
 print("Patch OK")
-PYEOF
+EOF
+          python3 "$PATCH_PY" "$DESKTOP_FILE"
+          rm -f "$PATCH_PY"
 
           echo "--- AFTER ---"
           cat "$DESKTOP_FILE"
@@ -317,7 +322,7 @@ PYEOF
           # Substitui o .deb original pelo corrigido
           cp "${{ env.BUILD_APP_NAME }}_patched.deb" "$ORIG_DIR/${{ env.BUILD_APP_NAME }}.deb"
           cd "$ORIG_DIR" && rm -rf "$WORK_DIR"
-          echo "==> DEB patched successfully!" 
+          echo "==> DEB patched successfully!"
 
       - name: Upload AppImage (Linux)
         if: runner.os == 'Linux'
