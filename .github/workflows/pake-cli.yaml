@@ -128,9 +128,9 @@ jobs:
           APP_NAME="${{ inputs.name }}"
           if [ "${{ runner.os }}" == "Linux" ]; then
             APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -s ' ' '-')
-            echo "Normalized Linux app name: $APPNAME"
+            echo "Normalized Linux app name: $APP_NAME"
           fi
-          echo "BUILD_APP_NAME=$APPNAME" >> "$GITHUB_ENV"
+          echo "BUILD_APP_NAME=$APP_NAME" >> "$GITHUB_ENV"
           ARGS=("${{ inputs.url }}" "--name" "$APP_NAME")
 
           # FIX 1 - ICONE: usa arquivo local baixado em vez de URL direta
