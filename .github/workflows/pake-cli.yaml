@@ -253,57 +253,73 @@ jobs:
           if-no-files-found: warn
 
       # FIX 2 - TECLADO: Apos instalacao do .deb, o arquivo .desktop e
-      # sobrescrito com GTK_IM_MODULE='' e XMODIFIERS='' para evitar conflito
-      # com IBus/fcitx no WebKitGTK, corrigindo letras que nao funcionam
-      # nos campos de login do app.
+      # Patch do .desktop para corrigir digitacao nos campos de login.
+      # Problema: WebKitGTK conflita com IBus/fcitx causando letras perdidas.
+      # Solucao: GTK_IM_MODULE=xim forca XIM (metodo de entrada basico),
+      # que funciona corretamente com a webview do Tauri no Linux.
       - name: Patch .desktop for keyboard fix (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          set -euo pipefail
           DEB_FILE="${{ env.BUILD_APP_NAME }}.deb"
           if [ ! -f "$DEB_FILE" ]; then
             echo "DEB not found, skipping .desktop patch"
             exit 0
           fi
 
-          echo "Patching .desktop inside $DEB_FILE to fix keyboard input (IME conflict)..."
+          echo "==> Patching .desktop inside $DEB_FILE..."
           WORK_DIR=$(mktemp -d)
+          ORIG_DIR="$(pwd)"
+          # Copia o .deb para o diretório de trabalho e entra nele
           cp "$DEB_FILE" "$WORK_DIR/"
           cd "$WORK_DIR"
 
-          # Extrai o .deb
-          ar x "$DEB_FILE"
-          mkdir data_extracted
+          # Extrai o .deb (ar x só precisa do nome do arquivo, já estamos no WORK_DIR)
+          ar x "${{ env.BUILD_APP_NAME }}.deb"
+          mkdir -p data_extracted
           tar -xf data.tar* -C data_extracted
 
-          # Encontra e corrige o arquivo .desktop
+          # Encontra o .desktop
           DESKTOP_FILE=$(find data_extracted -name "*.desktop" | head -1)
           if [ -z "$DESKTOP_FILE" ]; then
-            echo "No .desktop file found inside .deb, skipping patch"
-            cd - && rm -rf "$WORK_DIR"
+            echo "No .desktop file found, skipping patch"
+            cd "$ORIG_DIR" && rm -rf "$WORK_DIR"
             exit 0
           fi
 
-          echo "Found .desktop at: $DDESKTOP_FILE"
+          echo "==> Found: $DESKTOP_FILE"
+          echo "--- BEFORE ---"
           cat "$DESKTOP_FILE"
 
-          # Substitui a linha Exec= para adicionar as variaveis de ambiente
-          sed -i 's|^Exec=\(.*\)|Exec=env GTK_IM_MODULE="" XMODIFIERS="" \1|g' "$DESKTOP_FILE"
+          # Corrige a linha Exec= com python3 para evitar problemas de quoting no sed.
+          # GTK_IM_MODULE=xim: usa XIM em vez de IBus/fcitx, corrigindo letras perdidas.
+          python3 -c "
+          import sys, re
+          path = sys.argv[1]
+          txt = open(path).read()
+          # Remove patches anteriores para nao duplicar
+          txt = re.sub(r'(?m)^Exec=(?:env\s+[A-Z_]+=\S+\s+)*', 'Exec=', txt)
+          # Injeta as variaveis corretas
+          txt = re.sub(r"(?m)^Exec=(.+)$", r"Exec=env GTK_IM_MODULE=xim XMODIFIERS=@im=none \1", txt)
+          open(path, "w").write(txt)
+          print("Patch OK")
+          " -- "$DESKTOP_FILE"
 
-          echo "Patched .desktop:"
+          echo "--- AFTER ---"
           cat "$DESKTOP_FILE"
 
-          # Reempacota o data.tar
+          # Reempacota data.tar (remove os tars antigos antes)
+          rm -f data.tar.gz data.tar.xz data.tar.zst
           tar -czf data.tar.gz -C data_extracted .
-          
-          # Substitui no .deb (reempacota com ar)
-          # Nota: debian-binary e control.tar* já estão no CWD ($WORK_DIR) após "ar x"
+
+          # Reempacota o .deb (debian-binary e control.tar* já estão no CWD após ar x)
           ar rcs "${{ env.BUILD_APP_NAME }}_patched.deb" debian-binary control.tar* data.tar.gz
 
-          # Substitui o deb original pelo corrigido
-          cp "${{ env.BUILD_APP_NAME }}_patched.deb" "${OLDPWD}/${{ env.BUILD_APP_NAME }}.deb"
-          cd - && rm -rf "$WORK_DIR"
-          echo "DEB patched successfully!"
+          # Substitui o .deb original pelo corrigido
+          cp "${{ env.BUILD_APP_NAME }}_patched.deb" "$ORIG_DIR/${{ env.BUILD_APP_NAME }}.deb"
+          cd "$ORIG_DIR" && rm -rf "$WORK_DIR"
+          echo "==> DEB patched successfully!"
 
       - name: Upload AppImage (Linux)
         if: runner.os == 'Linux'
