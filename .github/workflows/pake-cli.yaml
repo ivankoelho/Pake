@@ -271,11 +271,10 @@ jobs:
           echo "==> Patching .desktop inside $DEB_FILE..."
           WORK_DIR=$(mktemp -d)
           ORIG_DIR="$(pwd)"
-          # Copia o .deb para o diretório de trabalho e entra nele
           cp "$DEB_FILE" "$WORK_DIR/"
           cd "$WORK_DIR"
 
-          # Extrai o .deb (ar x só precisa do nome do arquivo, já estamos no WORK_DIR)
+          # Extrai o .deb (já estamos no WORK_DIR)
           ar x "${{ env.BUILD_APP_NAME }}.deb"
           mkdir -p data_extracted
           tar -xf data.tar* -C data_extracted
@@ -292,34 +291,33 @@ jobs:
           echo "--- BEFORE ---"
           cat "$DESKTOP_FILE"
 
-          # Corrige a linha Exec= com python3 para evitar problemas de quoting no sed.
-          # GTK_IM_MODULE=xim: usa XIM em vez de IBus/fcitx, corrigindo letras perdidas.
-          python3 -c "
-          import sys, re
-          path = sys.argv[1]
-          txt = open(path).read()
-          # Remove patches anteriores para nao duplicar
-          txt = re.sub(r'(?m)^Exec=(?:env\s+[A-Z_]+=\S+\s+)*', 'Exec=', txt)
-          # Injeta as variaveis corretas
-          txt = re.sub(r"(?m)^Exec=(.+)$", r"Exec=env GTK_IM_MODULE=xim XMODIFIERS=@im=none \1", txt)
-          open(path, "w").write(txt)
-          print("Patch OK")
-          " -- "$DESKTOP_FILE"
+          # Corrige Exec= usando python3 via heredoc (seguro contra quoting do bash)
+          python3 - "$DESKTOP_FILE" <<'PYEOF'
+import sys, re
+path = sys.argv[1]
+txt = open(path).read()
+# Remove patches anteriores para nao duplicar
+txt = re.sub(r'(?m)^Exec=(?:env\s+\S+=\S+\s+)*', 'Exec=', txt)
+# Injeta GTK_IM_MODULE=xim XMODIFIERS=@im=none
+txt = re.sub(r'(?m)^Exec=(.+)$', r'Exec=env GTK_IM_MODULE=xim XMODIFIERS=@im=none ', txt)
+open(path, 'w').write(txt)
+print("Patch OK")
+PYEOF
 
           echo "--- AFTER ---"
           cat "$DESKTOP_FILE"
 
-          # Reempacota data.tar (remove os tars antigos antes)
+          # Reempacota data.tar (remove tars antigos antes para nao incluir no novo)
           rm -f data.tar.gz data.tar.xz data.tar.zst
           tar -czf data.tar.gz -C data_extracted .
 
-          # Reempacota o .deb (debian-binary e control.tar* já estão no CWD após ar x)
+          # Reempacota o .deb (debian-binary e control.tar* ja estao no CWD apos ar x)
           ar rcs "${{ env.BUILD_APP_NAME }}_patched.deb" debian-binary control.tar* data.tar.gz
 
           # Substitui o .deb original pelo corrigido
           cp "${{ env.BUILD_APP_NAME }}_patched.deb" "$ORIG_DIR/${{ env.BUILD_APP_NAME }}.deb"
           cd "$ORIG_DIR" && rm -rf "$WORK_DIR"
-          echo "==> DEB patched successfully!"
+          echo "==> DEB patched successfully!" 
 
       - name: Upload AppImage (Linux)
         if: runner.os == 'Linux'
